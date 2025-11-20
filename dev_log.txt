@@ -1,0 +1,28 @@
+- Action: Introduced QLoRA (4-bit quantization) to reduce memory usage.
+- Result: Encountered `RuntimeError: result type Float can't be cast...` during the training loop. Error pointed to the model's `altup` module.
+- Fix Attempt 1: Added `prepare_model_for_kbit_training`, a standard PEFT helper function. Error persisted.
+- Fix Attempt 2: Added `modules_to_save=["altup"]` to LoraConfig to protect the module.
+- Result: Error changed to `RuntimeError: only Tensors of floating point dtype can require gradients`. The error now occurred *before* training, inside `get_peft_model`. This indicated a conflict between PEFT and a module that was already quantized.
+- Fix Attempt 3: Added `embed_tokens` and `lm_head` to `modules_to_save`, suspecting they were also unstable. Error persisted in the same location.
+- Fix Attempt 4: Removed `embed_tokens`/`lm_head` from `modules_to_save` and added code to manually de-quantize only `lm_head`. Error persisted, confirming the issue is with any module placed in `modules_to_save`.
+- Fix Attempt 5: Added manual de-quantization for both `lm_head` and `altup`.
+- Result: Encountered `AttributeError: 'Gemma3nTextModel' object has no attribute 'altup'`. The path to the module was incorrect. The quantization issue is deeper than simple patching.
+- Action: Reverting to a non-quantized setup to establish a working baseline and isolate the problem to the quantization libraries.
+- Reversion Details: The following features were disabled to create a stable baseline:
+  - `BitsAndBytesConfig` (the core quantization configuration).
+  - `quantization_config` argument in the model loader.
+  - `prepare_model_for_kbit_training()` helper function.
+  - All manual de-quantization loops.
+  - `modules_to_save` argument in `LoraConfig`.
+  - `gradient_checkpointing` in `TrainingArguments`.
+- Final Diagnosis: Analysis of the official Google AI developer guide for Gemma QLoRA fine-tuning revealed the root cause. The issue was not a bug but a missing, required configuration. The `attn_implementation` argument must be specified when loading the model to ensure compatibility between the attention mechanism and the quantized layers. The recommended safe default is `"eager"`.
+- Action: Re-enabling quantization and implementing the official fine-tuning procedure.
+- Result: The official guide's solution failed. The original `RuntimeError: result type Float can't be cast...` in the `altup` module has returned. This confirms the incompatibility is specific to this module and not solved by the attention mechanism setting.
+- Action: Implementing a final, targeted patch to manually de-quantize the `altup` module in every decoder layer, which was the correct theoretical approach but failed previously due to an incorrect module path.
+- Result: Encountered `AttributeError: 'Gemma3nModel' object has no attribute 'layers'`. The path `model.model.layers` was also incorrect. Guessing the model structure is an invalid approach.
+- Action: Stop guessing. Inspect the model's source code to determine the correct architectural path to the decoder layers before applying a new patch.
+- Final Diagnosis: Source code inspection of `modeling_gemma3n.py` reveals the definitive path to the decoder layers is `model.model.language_model.layers`. Each layer in this list contains an `altup` module. The previous `AttributeError` was caused by an incomplete path.
+- Action: Implementing the final patch using the correct, verified module path.
+- Result: SUCCESS. The targeted de-quantization of `altup` and `lm_head` using the correct module path has resolved all runtime errors. The model is now fine-tuning with QLoRA enabled, saving approximately 3GB of VRAM.
+- Result: Training process is unstable. Loss becomes 0.0 and `grad_norm` becomes `nan`, indicating exploding gradients.
+- Action: Reducing learning rate and switching to a more stable paged optimizer to prevent numerical instability.

@@ -35,7 +35,8 @@
     "claudeOutputText": "Конечно! Чем могу помочь?"
 }
 ```
-Скрипт ищет сообщения от `"User"` (это будет инструкция) и следующий за ним ответ от `"Claude"`.
+Так же будут взяты пары "инструкция-ответ" из данных с ключами 'instruction' и 'output'. Либо `"User"` (это будет инструкция) и следующий за ним ответ от `"Claude"`.
+
 
 #### Шаг 2: Запустите установку
 
@@ -197,7 +198,7 @@ The script is designed to be flexible and robust, processing your chat history i
 
 **Input Format:**
 - The script recursively scans the `dataset` folder for any `.json` files.
-- It expects each file to contain a list of messages, where each message object has a `sender` (`"User"` or `"Claude"`), a `userInput` field, and a `claudeOutputText` field.
+- It expects each file to contain a list of messages, where each message object has a `sender` (`"User"` or `"Claude"`), a `userInput` field, and a `claudeOutputText` field. Alternatively works for pairs of `instruction` и `output`.
 
 **Processing Modes:**
 You can choose between two data formats for training:

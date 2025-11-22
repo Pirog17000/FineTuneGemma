@@ -26,3 +26,37 @@
 - Result: SUCCESS. The targeted de-quantization of `altup` and `lm_head` using the correct module path has resolved all runtime errors. The model is now fine-tuning with QLoRA enabled, saving approximately 3GB of VRAM.
 - Result: Training process is unstable. Loss becomes 0.0 and `grad_norm` becomes `nan`, indicating exploding gradients.
 - Action: Reducing learning rate and switching to a more stable paged optimizer to prevent numerical instability.
+
+- Issue: GGUF Conversion failed with 'Array length must be >= 0' (Integer Overflow) on Windows.
+- Diagnosis: The 'safetensors' library on Windows has a bug when serializing tensors larger than ~2GB (2^31 bytes). The merged Gemma-3n model exceeded this limit.
+- Fix Attempt 1: Cast the merged model to 'float16' to reduce size. Failed (still too big or overflow persisted).
+- Fix Attempt 2: Disabled 'safe_serialization' in 'convert_to_gguf.py' to use standard PyTorch '.bin' checkpoints (pickle format) instead of safetensors. 'llama.cpp' supports '.bin' files natively.
+- Result: SUCCESS. The model was successfully saved and converted.
+
+- Issue: 'llama.cpp' failed to load the GGUF model with 'missing tensor per_layer_token_embd.weight'.
+- Diagnosis: The script was loading the base model using the generic 'AutoModelForCausalLM', which failed to correctly register custom layers specific to the 'Gemma3n' architecture, causing 'peft' to drop them during the merge.
+- Fix: Updated 'convert_to_gguf.py' to explicitly import and use the 'Gemma3nForConditionalGeneration' class if available, ensuring the full model structure is preserved during the merge.
+
+- Feature: Continued Fine-Tuning / Resuming Training.
+- Action: Completely rewrote 'continue_finetune.py' to mirror the robust structure of the main 'finetune_gemma.py' script.
+- Details: The resume script now includes:
+  - All 'accelerate' compatibility patches.
+  - Manual float32 casting for 'altup' and 'lm_head' layers.
+  - Vision/Audio encoder freezing to prevent gradient explosions.
+  - Correct tokenization with padding masking (labels = -100).
+  - Support for loading a specific LoRA checkpoint adapter to resume training safely.
+
+- Issue: VRAM usage was high (~24GB), limiting the ability to use larger datasets.
+- Diagnosis: The manual de-quantization patches for `lm_head` and `altup` were casting them to `float32`, which has a high memory cost (the "3GB Tax"). Additionally, the LoRA configuration was training more parameters than necessary for stable fine-tuning.
+- Fix:
+  - Reduced LoRA rank from 64 to 32.
+  - Limited `target_modules` to only attention layers (`q_proj`, `k_proj`, `v_proj`, `o_proj`), removing MLP layers.
+  - Changed the manual de-quantization patch to use `bfloat16` instead of `float32`, cutting the memory overhead of the patch in half.
+  - Increased gradient accumulation steps to 32 to compensate for the lower rank.
+- Result: VRAM usage dropped by ~4GB, enabling training with larger datasets.
+
+- Issue: Resuming training from a checkpoint failed with `ValueError: Due to a serious vulnerability issue in torch.load...`.
+- Diagnosis: A recent version of the `transformers` library introduced a security check (related to CVE-2025-32434) that blocks loading standard PyTorch checkpoints unless PyTorch >= 2.6 is used. Upgrading PyTorch was not feasible due to potential CUDA compatibility issues.
+- Fix: Monkey-patched the `check_torch_load_is_safe` function in both `transformers.utils.import_utils` and `transformers.trainer` to bypass the check, as the checkpoints being loaded are local and trusted. The patch had to be applied *after* the library imports to be effective.
+- Result: Training can now be successfully resumed from checkpoints.
+

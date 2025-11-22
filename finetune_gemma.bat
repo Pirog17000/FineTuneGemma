@@ -20,6 +20,36 @@ if errorlevel 1 (
     goto :eof
 )
 
+REM --- Choose Run Mode ---
+:mode_choice
+echo.
+echo =================================================
+echo == Select Run Mode                             ==
+echo =================================================
+echo 1. Start NEW Training Run
+echo 2. RESUME from Checkpoint
+echo.
+set "MODE_CHOICE="
+set /p "MODE_CHOICE=Enter your choice (1 or 2): "
+
+set "RESUME_ARG="
+if "%MODE_CHOICE%"=="2" (
+    set "CHECKPOINT_PATH="
+    set /p "CHECKPOINT_PATH=Enter path to checkpoint directory (e.g. output/finetuned_model/checkpoint-400): "
+    if "!CHECKPOINT_PATH!"=="" (
+        echo [ERROR] Checkpoint path cannot be empty.
+        goto :mode_choice
+    )
+    REM Strip quotes just in case
+    set "CHECKPOINT_PATH=!CHECKPOINT_PATH:"=!"
+    set "RESUME_ARG=--resume_from_checkpoint "!CHECKPOINT_PATH!""
+    echo [INFO] Will resume from: !CHECKPOINT_PATH!
+) else if not "%MODE_CHOICE%"=="1" (
+    echo [ERROR] Invalid choice. Please enter 1 or 2.
+    goto :mode_choice
+)
+echo.
+
 REM --- Choose Dataset Format ---
 :format_choice
 echo Choose the dataset format you are training on:
@@ -142,13 +172,20 @@ echo.
 REM --- Configure Training Parameters ---
 echo.
 echo [INFO] Configure Training Parameters (leave blank for defaults).
+if defined RESUME_ARG (
+    echo [NOTE] You are RESUMING. 'Number of epochs' must be greater than what was already completed.
+    echo        ^(e.g., if you paused at Epoch 2 of 4, enter 4. If you finished 4 and want 2 more, enter 6^).
+)
 set "NUM_TRAIN_EPOCHS="
 set /p "NUM_TRAIN_EPOCHS=Enter number of training epochs (default: 4): "
 if "%NUM_TRAIN_EPOCHS%"=="" set NUM_TRAIN_EPOCHS=4
 
-set "EVAL_STEPS="
-set /p "EVAL_STEPS=Enter evaluation frequency in steps (default: 20): "
-if "%EVAL_STEPS%"=="" set EVAL_STEPS=20
+set "EVAL_STEPS=20"
+if defined EVAL_ARG (
+    set "INPUT_EVAL_STEPS="
+    set /p "INPUT_EVAL_STEPS=Enter evaluation frequency in steps (default: 20): "
+    if defined INPUT_EVAL_STEPS set "EVAL_STEPS=!INPUT_EVAL_STEPS!"
+)
 
 set "SAVE_STEPS="
 set /p "SAVE_STEPS=Enter checkpoint save frequency in steps (default: 20): "
@@ -160,7 +197,7 @@ echo.
 
 REM --- Run Fine-Tuning ---
 echo [INFO] Starting fine-tuning...
-python finetune_gemma.py --dataset_format %DATA_FORMAT% --train_dataset_file "%TRAIN_DATASET_FILE%" %EVAL_ARG% --num_train_epochs %NUM_TRAIN_EPOCHS% --eval_steps %EVAL_STEPS% --save_steps %SAVE_STEPS%
+python finetune_gemma.py --dataset_format %DATA_FORMAT% --train_dataset_file "%TRAIN_DATASET_FILE%" %EVAL_ARG% --num_train_epochs %NUM_TRAIN_EPOCHS% --eval_steps %EVAL_STEPS% --save_steps %SAVE_STEPS% %RESUME_ARG%
 if errorlevel 1 (
     echo [ERROR] Fine-tuning script failed.
     pause

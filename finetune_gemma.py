@@ -303,9 +303,9 @@ def main():
     # Мы обучаем только ~0.1% параметров (адаптеры), замораживая остальную модель.
     # Это позволяет файн-тюнить огромные модели на обычных GPU.
     lora_config = LoraConfig(
-        r=32,
-        lora_alpha=64,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        r=64,
+        lora_alpha=128,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], 
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",

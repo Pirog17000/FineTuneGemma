@@ -45,7 +45,7 @@ REM --- Clone llama.cpp for GGUF conversion tools ---
 echo [INFO] Checking for llama.cpp repository...
 if not exist "llama.cpp" (
     echo [INFO] Cloning llama.cpp repository...
-    git clone https://github.com/ggerganov/llama.cpp.git
+    git clone https://github.com/ggml-org/llama.cpp.git
     if errorlevel 1 (
         echo [ERROR] Failed to clone llama.cpp. Please ensure Git is installed and in your PATH.
         goto error

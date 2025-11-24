@@ -1,76 +1,55 @@
 @echo off
 setlocal enabledelayedexpansion
-title Gemma GGUF Converter & Quantizer (Auto-Updater)
+title Gemma GGUF Converter ^& Quantizer
 color 0A
 
 :: ========================================================
 :: CONFIGURATION
 :: ========================================================
-:: Folder where tools will be kept
+:: Folder where llama.cpp repo is cloned
 set "TOOLS_DIR=llama.cpp"
 
 :: Path to your Python environment
 set "VENV_PATH=venv\Scripts\activate.bat"
 
-:: Path to the convert script (Python) - usually downloaded manually or git cloned
+:: Path to the convert script (Python) - inside llama.cpp repo
 set "CONVERT_SCRIPT=%TOOLS_DIR%\convert_hf_to_gguf.py"
 
-:: Path to the llama-quantize executable (EXE)
-set "QUANTIZER=%TOOLS_DIR%\llama-quantize.exe"
+:: Path to the quantization script (Python wrapper)
+set "QUANTIZER=quantize_model.py"
 
 :: Input/Output paths
 set "INPUT_DIR=output\ready_for_gguf"
 set "BASE_GGUF=output\model_f16.gguf"
 set "OUTPUT_DIR=output"
 
-:: Create tools dir if missing
-if not exist "%TOOLS_DIR%" mkdir "%TOOLS_DIR%"
-
 :: ========================================================
-:: 1. CHECK & DOWNLOAD TOOLS (THE MAGIC PART)
+:: 1. CHECK ENVIRONMENT
 :: ========================================================
-if exist "%QUANTIZER%" goto ACTIVATE_ENV
-
-cls
-echo [WARNING] llama-quantize.exe not found in %TOOLS_DIR%!
-echo.
-echo [AUTO-DOWNLOAD] Fetching the LATEST release from GitHub...
-echo This may take a minute depending on your internet.
-echo.
-
-:: PowerShell one-liner to:
-:: 1. Get latest release JSON from GitHub API
-:: 2. Find the asset URL containing 'bin-win-avx2-x64.zip' (Most compatible/fast)
-:: 3. Download it as 'llama_temp.zip'
-:: 4. Unzip it into the TOOLS_DIR
-:: 5. Delete the zip
-powershell -Command "$ProgressPreference = 'SilentlyContinue'; Write-Host '   --> Querying GitHub API...'; $json=Invoke-RestMethod -Uri 'https://api.github.com/repos/ggerganov/llama.cpp/releases/latest'; $asset=$json.assets | Where-Object {$_.name -like '*bin-win-avx2-x64.zip'}; $url=$asset.browser_download_url; Write-Host '   --> Downloading: ' $asset.name; Invoke-WebRequest -Uri $url -OutFile 'llama_temp.zip'; Write-Host '   --> Extracting...'; Expand-Archive -Path 'llama_temp.zip' -DestinationPath '%TOOLS_DIR%' -Force; Remove-Item 'llama_temp.zip'; Write-Host '   --> Done!'"
-
-if not exist "%QUANTIZER%" (
-    color 0C
-    echo.
-    echo [ERROR] Download failed or file structure changed.
-    echo Please download 'llama-*-bin-win-avx2-x64.zip' manually from:
-    echo https://github.com/ggerganov/llama.cpp/releases
-    echo and extract it to: %TOOLS_DIR%
-    pause
-    exit /b
-) else (
-    echo [OK] Tools updated successfully.
-    timeout /t 2 >nul
-)
-
-:: ========================================================
-:: 2. ACTIVATE VENV
-:: ========================================================
-:ACTIVATE_ENV
-echo [INFO] Checking Virtual Environment...
 if exist "%VENV_PATH%" (
     call "%VENV_PATH%"
     echo [OK] Venv activated.
 ) else (
     color 0C
     echo [ERROR] Virtual environment not found at "%VENV_PATH%"
+    echo Please run prepare_venv.bat first.
+    pause
+    exit /b
+)
+
+:: Check for scripts
+if not exist "%CONVERT_SCRIPT%" (
+    color 0C
+    echo [ERROR] Convert script not found at "%CONVERT_SCRIPT%"
+    echo Please make sure llama.cpp is cloned - run prepare_venv.bat.
+    pause
+    exit /b
+)
+
+if not exist "%QUANTIZER%" (
+    color 0C
+    echo [ERROR] Quantize script not found at "%QUANTIZER%"
+    echo This script should be in the project root.
     pause
     exit /b
 )
@@ -119,14 +98,6 @@ echo [INFO] converting HF model to F16 GGUF...
 echo [INFO] Script: %CONVERT_SCRIPT%
 echo [INFO] Input:  %INPUT_DIR%
 
-if not exist "%CONVERT_SCRIPT%" (
-    echo [ERROR] Could not find convert script at: %CONVERT_SCRIPT%
-    echo Please make sure convert_hf_to_gguf.py is inside the %TOOLS_DIR% folder.
-    echo (The auto-downloader only fetches the EXE binaries, not the python script).
-    pause
-    goto MENU
-)
-
 python "%CONVERT_SCRIPT%" "%INPUT_DIR%" --outfile "%BASE_GGUF%" --outtype f16
 
 if %errorlevel% neq 0 (
@@ -157,7 +128,7 @@ set "OUT_FILE=%OUTPUT_DIR%\gemma_lyrics_%Q_TYPE%.gguf"
 echo.
 echo [PROCESS] Quantizing to %Q_TYPE%...
 echo --------------------------------------------------------
-"%QUANTIZER%" "%BASE_GGUF%" "%OUT_FILE%" %Q_TYPE%
+python "%QUANTIZER%" "%BASE_GGUF%" "%OUT_FILE%" %Q_TYPE%
 echo --------------------------------------------------------
 
 if %errorlevel% neq 0 (

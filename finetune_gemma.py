@@ -8,6 +8,7 @@ import os
 import shutil
 import argparse
 import gc
+import yaml
 from typing import Optional
 import inspect
 
@@ -231,8 +232,13 @@ def main():
         print(f"[CHECK] Evaluation dataset found: {eval_data_path}")
     # --- КОНЕЦ ПРОВЕРКИ ---
 
-    model_path = "models/gemma-3n"
-    output_dir = "output/finetuned_model"
+    # Load configuration from aaaCONFIG.yaml
+    with open("aaaCONFIG.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    print("Loaded configuration from aaaCONFIG.yaml")
+
+    model_path = config.get("model_path", "models/gemma-3n")
+    output_dir = config.get("output_dir", "output/finetuned_model")
     os.makedirs(output_dir, exist_ok=True)
 
     print("1. Loading processor and model...")
@@ -302,11 +308,12 @@ def main():
     # ЗАЧЕМ/МОТИВАЦИЯ:
     # Мы обучаем только ~0.1% параметров (адаптеры), замораживая остальную модель.
     # Это позволяет файн-тюнить огромные модели на обычных GPU.
+    lora_conf = config["lora_config"]
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=128,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], 
-        lora_dropout=0.05,
+        r=lora_conf["r"],
+        lora_alpha=lora_conf["lora_alpha"],
+        target_modules=lora_conf["target_modules"],
+        lora_dropout=lora_conf["lora_dropout"],
         bias="none",
         task_type="CAUSAL_LM",
     )
@@ -353,28 +360,28 @@ def main():
     
     # Аргументы тренировки
     # Мы отключаем стандартное сохранение (save_strategy="no") и используем наш Callback.
+    train_conf = config["training_args"]
     training_args_dict = {
         'output_dir': output_dir,
-        'per_device_train_batch_size': 1,
-        'gradient_accumulation_steps': 32,
+        'per_device_train_batch_size': train_conf["per_device_train_batch_size"],
+        'gradient_accumulation_steps': train_conf["gradient_accumulation_steps"],
         # Lower learning rate for stability
-        'learning_rate': 5e-6, 
+        'learning_rate': float(train_conf["learning_rate"]), 
         'num_train_epochs': args.num_train_epochs,
         # Логируем чаще, чтобы видеть прогресс (каждые 10 шагов)
-        'logging_steps': 10, 
+        'logging_steps': train_conf["logging_steps"], 
         # Отключаем стандартное сохранение, чтобы не спамить чекпоинтами и не удалять нужное
         'save_strategy': "no",
         'report_to': "tensorboard",
-        'weight_decay': 0.01,
+        'weight_decay': train_conf["weight_decay"],
         # Fixed warmup steps for stability
-        'warmup_ratio': 0.03,  # 0.03 is fine
-        #'warmup_steps': 100,  # 100 is fine (use just one of them)
-        'gradient_checkpointing': True,
-        'gradient_checkpointing_kwargs': {'use_reentrant': False},
+        'warmup_ratio': train_conf["warmup_ratio"],
+        'gradient_checkpointing': train_conf["gradient_checkpointing"],
+        'gradient_checkpointing_kwargs': train_conf["gradient_checkpointing_kwargs"],
         # Use 32-bit optimizer for better precision with LoRA
-        'optim': "paged_adamw_32bit",
-        'bf16': True,
-        'max_grad_norm': 0.3,
+        'optim': train_conf["optim"],
+        'bf16': train_conf["bf16"],
+        'max_grad_norm': train_conf["max_grad_norm"],
     }
 
     callbacks_to_use = []
@@ -394,7 +401,7 @@ def main():
         # Fallback to standard saving if no evaluation is performed
         training_args_dict['save_strategy'] = "steps"
         training_args_dict['save_steps'] = args.save_steps
-        training_args_dict['save_total_limit'] = 2 # Keep only the last 2 checkpoints
+        training_args_dict['save_total_limit'] = train_conf.get("save_total_limit", 2) # Keep only the last 2 checkpoints
 
     training_args = TrainingArguments(**training_args_dict)
 

@@ -243,3 +243,53 @@ The Gemma-3n model proved to be unstable under standard QLoRA fine-tuning. The f
 -   **Manual De-quantization**: The `altup` and `lm_head` layers, which were found to cause crashes, are manually cast to full `float32` precision.
 -   **Freezing Unused Encoders**: The model's vision and audio components were found to generate infinite values, causing errors. These modules are now frozen to ensure numerical stability.
 -   **Optimized Training Arguments**: The training configuration was carefully tuned for stability. It uses the `paged_adamw_32bit` optimizer, a lower learning rate (`5e-6`), and a gentle warmup schedule to avoid the "exploding gradient" problem.
+
+---
+
+# Запуск на RunPod / Linux
+
+Для пользователей облачных сервисов (RunPod, Vast.ai) или Linux добавлены специальные скрипты. Они полностью дублируют функционал Windows-версии, но адаптированы под Linux среду.
+
+**Файлы:**
+- `runpod_setup.sh` — Аналог `prepare_venv.bat`. Устанавливает окружение, компилирует `llama.cpp` с поддержкой CUDA и качает модель.
+- `runpod_finetune.sh` — Аналог `finetune_gemma.bat`. Интерактивное меню для запуска обучения.
+
+**Инструкция:**
+1. Загрузите файлы на сервер.
+2. Дайте права на выполнение:
+   ```bash
+   chmod +x runpod_setup.sh runpod_finetune.sh
+   ```
+3. Запустите установку:
+   ```bash
+   ./runpod_setup.sh
+   ```
+4. Запустите обучение:
+   ```bash
+   ./runpod_finetune.sh
+   ```
+
+---
+
+# RunPod / Linux Support
+
+For users of cloud services (RunPod, Vast.ai) or Linux, specific scripts have been added. They replicate the Windows workflow but are adapted for the Linux environment.
+
+**Files:**
+- `runpod_setup.sh` — Equivalent to `prepare_venv.bat`. Sets up the environment, compiles `llama.cpp` with CUDA support, and downloads the model.
+- `runpod_finetune.sh` — Equivalent to `finetune_gemma.bat`. Interactive menu for starting the training.
+
+**Instructions:**
+1. Upload files to the server.
+2. Grant execution permissions:
+   ```bash
+   chmod +x runpod_setup.sh runpod_finetune.sh
+   ```
+3. Run setup:
+   ```bash
+   ./runpod_setup.sh
+   ```
+4. Run training:
+   ```bash
+   ./runpod_finetune.sh
+   ```

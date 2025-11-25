@@ -1,0 +1,166 @@
+# =================================================================================================
+# GLOBAL CONFIGURATION / ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ
+# =================================================================================================
+
+# EN: Path to the base model. "gemma-3n" implies a Gemma 3 variant (likely 3-nan or similar).
+# Gemma 3 uses a sliding window attention mechanism and supports multimodal inputs.
+# RU: Путь к базовой модели. "gemma-3n" подразумевает вариант Gemma 3 (вероятно, 3-nan или подобный).
+# Gemma 3 использует механизм внимания со скользящим окном и поддерживает мультимодальные входы.
+model_path: "models/gemma-3n"
+
+# EN: Directory where the finetuned model and logs will be saved.
+# RU: Директория, куда будут сохранены дообученная модель и логи.
+output_dir: "output/finetuned_model"
+
+
+# =================================================================================================
+# DATASET CONFIGURATION / КОНФИГУРАЦИЯ ДАТАСЕТА
+# =================================================================================================
+dataset:
+  # EN: Maximum length of the input sequence.
+  # Effect: Increasing (e.g., 1024, 2048) captures more context but linearly increases VRAM usage and compute time.
+  # Gemma 3 supports up to 128k, but for finetuning on consumer GPUs, keep this low (512-2048).
+  # RU: Максимальная длина входной последовательности.
+  # Эффект: Увеличение (например, до 1024, 2048) захватывает больше контекста, но линейно увеличивает потребление VRAM и время вычислений.
+  # Gemma 3 поддерживает до 128k, но для дообучения на потребительских GPU держите это значение низким (512-2048).
+  max_length: 512
+
+
+# =================================================================================================
+# LORA (Low-Rank Adaptation) CONFIGURATION / КОНФИГУРАЦИЯ LORA
+# =================================================================================================
+lora_config:
+  # EN: Rank of the low-rank matrices.
+  # Effect: Higher (e.g., 128) = more trainable parameters, better model capacity/quality, but slower and more VRAM.
+  # Lower (e.g., 8, 16) = faster, less VRAM, but "stiffer" model. 64 is a high-quality setting.
+  # RU: Ранг низкоранговых матриц.
+  # Эффект: Выше (например, 128) = больше обучаемых параметров, лучше качество/емкость, но медленнее и больше VRAM.
+  # Ниже (например, 8, 16) = быстрее, меньше VRAM, но модель более "жесткая". 64 — настройка для высокого качества.
+  r: 64
+
+  # EN: Scaling factor for LoRA updates. Rule of thumb: alpha = 2 * r.
+  # Effect: Controls the strength of the adaptation. Higher = stronger influence of new training data.
+  # RU: Масштабирующий коэффициент для обновлений LoRA. Эмпирическое правило: alpha = 2 * r.
+  # Эффект: Контролирует силу адаптации. Выше = сильнее влияние новых обучающих данных.
+  lora_alpha: 128
+
+  # EN: Modules to apply LoRA to.
+  # Effect: Listing all linear layers (q, k, v, o, gate, up, down) gives the best quality (full finetuning-like behavior)
+  # but uses more VRAM than targeting just attention (q, v).
+  # RU: Модули, к которым применяется LoRA.
+  # Эффект: Перечисление всех линейных слоев (q, k, v, o, gate, up, down) дает лучшее качество (похоже на полное дообучение),
+  # но использует больше VRAM, чем таргетинг только внимания (q, v).
+  target_modules: 
+    - "q_proj" 
+    - "k_proj" 
+    - "v_proj" 
+    - "o_proj" 
+    - "gate_proj" 
+    - "up_proj" 
+    - "down_proj"
+
+  # EN: Dropout probability for LoRA layers.
+  # Effect: Higher (e.g., 0.1) = more regularization, prevents overfitting on small datasets.
+  # RU: Вероятность dropout для слоев LoRA.
+  # Эффект: Выше (например, 0.1) = больше регуляризации, предотвращает переобучение на малых датасетах.
+  lora_dropout: 0.05
+
+  # EN: Bias training. "none" is standard for LoRA to save parameters.
+  # RU: Обучение смещений (bias). "none" — стандарт для LoRA для экономии параметров.
+  bias: "none"
+
+  # EN: Task type. CAUSAL_LM is for standard text generation.
+  # RU: Тип задачи. CAUSAL_LM — для стандартной генерации текста.
+  task_type: "CAUSAL_LM"
+
+
+# =================================================================================================
+# TRAINING ARGUMENTS / АРГУМЕНТЫ ОБУЧЕНИЯ
+# =================================================================================================
+training_args:
+  # EN: Batch size per GPU.
+  # Effect: Increase to speed up training, but strictly limited by VRAM. If OOM occurs, set to 1.
+  # RU: Размер батча на один GPU.
+  # Эффект: Увеличьте для ускорения, но строго ограничено VRAM. Если ошибка памяти (OOM), ставьте 1.
+  per_device_train_batch_size: 1
+
+  # EN: Number of steps to accumulate gradients before updating weights.
+  # Effect: Simulates a larger batch size (BS = per_device * accum_steps).
+  # Higher (e.g., 64) = stable gradients, less noise. Lower = faster updates but potentially unstable.
+  # Total effective batch size here: 1 * 32 = 32.
+  # RU: Количество шагов для накопления градиентов перед обновлением весов.
+  # Эффект: Симулирует больший размер батча (BS = per_device * accum_steps).
+  # Выше (например, 64) = стабильные градиенты, меньше шума. Ниже = чаще обновления, но возможна нестабильность.
+  # Итоговый эффективный батч здесь: 1 * 32 = 32.
+  gradient_accumulation_steps: 32
+
+  # EN: Learning rate. 5e-6 is conservative for fine-tuning large models to avoid "catastrophic forgetting".
+  # Effect: Increase (e.g., 2e-4) for faster learning (risk of instability). Decrease (1e-6) for precise, slow tuning.
+  # RU: Скорость обучения (Learning Rate). 5e-6 — консервативное значение для дообучения, чтобы избежать "катастрофического забывания".
+  # Эффект: Увеличьте (например, 2e-4) для быстрого обучения (риск нестабильности). Уменьшите (1e-6) для точной, медленной настройки.
+  learning_rate: 5.0e-6
+
+  # EN: Log training stats every X steps.
+  # RU: Логировать статистику обучения каждые X шагов.
+  logging_steps: 10
+
+  # EN: Strategy for saving checkpoints. "no" means save only at the end.
+  # Options: "steps" (every save_steps), "epoch" (every epoch).
+  # RU: Стратегия сохранения чекпоинтов. "no" означает сохранение только в конце.
+  # Варианты: "steps" (каждые save_steps), "epoch" (каждую эпоху).
+  save_strategy: "no"
+
+  # EN: Reporting platform.
+  # RU: Платформа для отчетов.
+  report_to: "tensorboard"
+
+  # EN: Weight decay (L2 regularization).
+  # Effect: Prevents weights from growing too large, helps generalisation. 0.01 is standard.
+  # RU: Затухание весов (L2 регуляризация).
+  # Эффект: Предотвращает чрезмерный рост весов, помогает обобщению. 0.01 — стандарт.
+  weight_decay: 0.01
+
+  # EN: Ratio of steps for warm-up (linear increase of LR from 0).
+  # Effect: Helps stabilize training at the very beginning.
+  # RU: Доля шагов для разогрева (линейное увеличение LR с 0).
+  # Эффект: Помогает стабилизировать обучение в самом начале.
+  warmup_ratio: 0.03
+
+  # EN: Enable gradient checkpointing.
+  # Effect: Saves massive amount of VRAM by recomputing activations during backward pass.
+  # Cost: Slows down training by ~20%. Essential for consumer GPUs.
+  # RU: Включить чекпоинтинг градиентов.
+  # Эффект: Экономит огромное количество VRAM за счет пересчета активаций при обратном проходе.
+  # Цена: Замедляет обучение на ~20%. Необходимо для потребительских GPU.
+  gradient_checkpointing: true
+
+  # EN: Specific arguments for gradient checkpointing.
+  # use_reentrant: false is recommended for compatibility with newer PyTorch versions.
+  # RU: Специфичные аргументы для чекпоинтинга.
+  # use_reentrant: false рекомендуется для совместимости с новыми версиями PyTorch.
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+
+  # EN: Optimizer. "paged_adamw_32bit" uses CPU RAM if GPU VRAM runs out.
+  # Effect: Prevents OOM crashes by offloading optimizer states.
+  # RU: Оптимизатор. "paged_adamw_32bit" использует RAM CPU, если VRAM GPU заканчивается.
+  # Эффект: Предотвращает вылеты OOM за счет выгрузки состояний оптимизатора.
+  optim: "paged_adamw_32bit"
+
+  # EN: Use BFloat16 precision.
+  # Effect: Better numerical stability than FP16. Requires Ampere (RTX 30xx) or newer GPUs.
+  # Set to "false" (and fp16: true) for older GPUs (Tesla T4, Pascal, etc.).
+  # RU: Использовать точность BFloat16.
+  # Эффект: Лучшая числовая стабильность, чем у FP16. Требует GPU архитектуры Ampere (RTX 30xx) или новее.
+  # Установите "false" (и fp16: true) для старых GPU (Tesla T4, Pascal и т.д.).
+  bf16: true
+
+  # EN: Gradient clipping threshold.
+  # Effect: Prevents exploding gradients which can destabilize training.
+  # RU: Порог клиппинга градиентов.
+  # Эффект: Предотвращает взрыв градиентов, который может дестабилизировать обучение.
+  max_grad_norm: 0.3
+
+  # EN: Limit total saved checkpoints (if save_strategy is active).
+  # RU: Лимит сохраненных чекпоинтов (если save_strategy активна).
+  save_total_limit: 2
